@@ -10,23 +10,17 @@
 #include <sys/stat.h>
 #include <sys/select.h>
 
-#define MAX_BUF_SIZE 1024
-
-typedef struct {
-  char data[MAX_BUF_SIZE+1];
-  int filled;
-} buffer;
+#include "ypiped.h"
 
 #define BUFFER_EMPTY_SIZE(bref) (MAX_BUF_SIZE - (bref).filled)
 #define BUFFER_FREE_PTR(bref) ((bref).data + (bref).filled)
 
-/* global variables */
-int    g_fd;
-buffer g_buffer;
-int    g_terminate;
-
+YpipeState  g_yp_state;
+YpipeConfig g_yp_config;
 
 /* function prototypes */
+void usage();
+void readConfig(int argc, char *argv[]);
 void init();
 void reaper();
 void terminate();
@@ -38,7 +32,8 @@ void signal_term(int signum);
 
 int main(int argc, char *argv[])
 {
-    init(argc, argv);
+    readConfig(argc, argv);
+    init();
     reaper();
     terminate();
     return 0;
@@ -46,24 +41,73 @@ int main(int argc, char *argv[])
 
 void signal_term(int signum)
 {
-    g_terminate = 1;
+    g_yp_state.terminate = 1;
 }
 
-void init(int argc, char *argv[])
+void usage()
 {
-    if (argc < 2) {
-        printf("usage: ypipe <fifo> &\n");
+    printf("usage: ypipe <fifo> &\n");
+}
+
+void readConfig(int argc, char *argv[])
+{
+    int c;
+
+    memset(g_yp_config.fifo_path, '\0', PATH_MAX);
+    g_yp_config.output = 0;
+    memset(g_yp_config.output_file_path, '\0', PATH_MAX);
+    g_yp_config.append = 0;
+
+    opterr = 0;
+     
+    while ((c = getopt (argc, argv, "ao:")) != -1) {
+        switch (c)
+            {
+            case 'a':
+                g_yp_config.append = 1;
+                break;
+            case 'o':
+                g_yp_config.output = 1;
+                strcpy(g_yp_config.output_file_path, optarg);
+                break;
+            case '?':
+            default:
+                usage();
+                exit(1);
+            }
+    }
+     
+    if (argc - optind < 1) {
+        usage();
         exit(1);
     }
 
-    g_fd = open(argv[1], O_RDONLY);
-    memset(g_buffer.data, 0, MAX_BUF_SIZE+1);
-    g_buffer.filled = 0;
-    g_terminate = 0;
+    strcpy(g_yp_config.fifo_path, argv[optind]);
+}
 
-    if (!g_fd) {
-        printf("Open named pipe error!\n");
+void init()
+{     
+    g_yp_state.terminate = 0;
+
+    g_yp_state.fifo_fd = open(g_yp_config.fifo_path, O_RDONLY);
+    if (!g_yp_state.fifo_fd) {
+        printf("Open named pipe %s error!\n", g_yp_config.fifo_path);
         exit(1);
+    }
+
+    memset(g_yp_state.buf.data, 0, MAX_BUF_SIZE+1);
+    g_yp_state.buf.filled = 0;
+
+    if (!g_yp_config.output) {
+        g_yp_state.output_file_fd = 0;
+    }
+    else {
+        g_yp_state.output_file_fd = fopen(g_yp_config.output_file_path,
+                                          g_yp_config.append==1 ? "a+" : "w+");
+        if (!g_yp_state.output_file_fd) {
+            printf("Open output file %s failed!\n", g_yp_config.output_file_path);
+            exit(1);
+        }
     }
 
     if (signal(SIGTERM, signal_term) == SIG_ERR) {
@@ -74,9 +118,9 @@ void init(int argc, char *argv[])
 
 void reaper()
 {
-    int    ret;
-    int    fd_max;
-    fd_set fdset;
+    int      ret;
+    int      fd_max;
+    fd_set   fdset;
     sigset_t sigmask;
 
     sigemptyset(&sigmask);
@@ -84,31 +128,25 @@ void reaper()
 
     for (;;) {
         FD_ZERO(&fdset);
-        FD_SET(g_fd, &fdset);
-        fd_max = g_fd + 1;
+        FD_SET(g_yp_state.fifo_fd, &fdset);
+        fd_max = g_yp_state.fifo_fd + 1;
 
         ret = pselect(fd_max, &fdset, NULL, NULL, NULL, &sigmask);
         if (ret > 0) {
-            if (FD_ISSET(g_fd, &fdset) != 0) {
+            if (FD_ISSET(g_yp_state.fifo_fd, &fdset) != 0) {
                 readAndProcess();
             }
         }
 
-        if (g_terminate == 1)
+        if (g_yp_state.terminate == 1)
             break;
     }
 }
 
 void terminate()
 {
-    if(g_buffer.filled > 0) {
-#ifdef DEBUG
-        printf("Flush last %d chars ...\n", g_buffer.filled);
-#endif
+    if(g_yp_state.buf.filled > 0) {
         outputBufferAll();
-#ifdef DEBUG
-        printf("Bye :)\n");
-#endif
     }
 }
 
@@ -119,10 +157,10 @@ void readAndProcess()
     int last_filled;
     char *b;
 
-    need = BUFFER_EMPTY_SIZE(g_buffer);
-    b = BUFFER_FREE_PTR(g_buffer);
+    need = BUFFER_EMPTY_SIZE(g_yp_state.buf);
+    b = BUFFER_FREE_PTR(g_yp_state.buf);
 
-    numread = read(g_fd, b, need);
+    numread = read(g_yp_state.fifo_fd, b, need);
 
     if (numread == 0)
         return;
@@ -130,17 +168,17 @@ void readAndProcess()
         outputBufferAll();
     }
     else {
-        last_filled = g_buffer.filled;
-        g_buffer.filled += numread;
+        last_filled = g_yp_state.buf.filled;
+        g_yp_state.buf.filled += numread;
         outputBufferUntilLineBreak(last_filled);
     }
 }
 
 void outputBufferAll()
 {
-    printf("%s", g_buffer.data);
-    memset(g_buffer.data, '\0', MAX_BUF_SIZE+1);
-    g_buffer.filled = 0;
+    printf("%s", g_yp_state.buf.data);
+    memset(g_yp_state.buf.data, '\0', MAX_BUF_SIZE+1);
+    g_yp_state.buf.filled = 0;
 }
 
 void outputBufferUntilLineBreak(int last_filled)
@@ -148,23 +186,23 @@ void outputBufferUntilLineBreak(int last_filled)
     int i,j;
     char tmp;
 
-    for (i=g_buffer.filled; i>last_filled; --i)
-        if (g_buffer.data[i-1] == '\n')
+    for (i=g_yp_state.buf.filled; i>last_filled; --i)
+        if (g_yp_state.buf.data[i-1] == '\n')
             break;
 
     if (i == last_filled)
         return;
     else {
-        tmp = g_buffer.data[i];
-        g_buffer.data[i] = '\0';
-        printf("%s", g_buffer.data);
-        g_buffer.data[i] = tmp;
+        tmp = g_yp_state.buf.data[i];
+        g_yp_state.buf.data[i] = '\0';
+        printf("%s", g_yp_state.buf.data);
+        g_yp_state.buf.data[i] = tmp;
         
-        g_buffer.filled = g_buffer.filled - i;
+        g_yp_state.buf.filled = g_yp_state.buf.filled - i;
         j = i;
-        for (i=0; i<g_buffer.filled; ++i) {
-            g_buffer.data[i] = g_buffer.data[j];
+        for (i=0; i<g_yp_state.buf.filled; ++i) {
+            g_yp_state.buf.data[i] = g_yp_state.buf.data[j];
         }
-        g_buffer.data[g_buffer.filled] = '\0';
+        g_yp_state.buf.data[g_yp_state.buf.filled] = '\0';
     }
 }
