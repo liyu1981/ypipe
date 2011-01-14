@@ -1,8 +1,4 @@
 
-CC=gcc
-CFLAGS=-c -Wall -g
-LDFLAGS=
-
 SOURCES=ypiped.c
 OBJECTS=$(SOURCES:.c=.o)
 

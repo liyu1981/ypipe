@@ -2,3 +2,4 @@
 *.out
 *.o
 /src/ypiped
+/autom4te.cache/

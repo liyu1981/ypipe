@@ -1,0 +1,26 @@
+
+PREFIX=@prefix@
+CFLAGS_EXTRA=@cflags_extra@
+LDFLAGS_EXTRA=@ldflags_extra@
+
+# ----------------------------------------------------------------------------
+
+EXECDIR=$(PREFIX)/bin
+
+export CC=gcc
+export CFLAGS=-c -Wall $(CFLAGS_EXTRA)
+export LDFLAGS=$(LDFLAGS_EXTRA)
+
+# ----------------------------------------------------------------------------
+
+EXECS = ypiped
+
+all: Makefile
+	cd src; make
+
+install: all
+	install -d $(EXECDIR)
+	cd src; install -b $(EXECS) $(EXECDIR)
+
+clean:
+	cd src; make clean
