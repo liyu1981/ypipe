@@ -12,8 +12,8 @@
 #define MAX_BUF_SIZE 1024
 
 typedef struct {
-  char data[MAX_BUF_SIZE+1];
-  int filled;
+    char data[MAX_BUF_SIZE+1];
+    int filled;
 } buffer;
 
 #define BUFFER_EMPTY_SIZE(bref) (MAX_BUF_SIZE - (bref).filled)
@@ -24,7 +24,7 @@ int    g_fd;
 buffer g_buffer;
 
 /* function prototypes */
-void readAndProcess();
+void readAndProcess(int size);
 
 int main(int argc, char *argv[])
 {
@@ -38,7 +38,7 @@ int main(int argc, char *argv[])
     }
 
     g_fd = open(argv[1], O_RDONLY);
-    memset(g_buffer.data, 0, MAX_BUF_SIZE+1);
+    memset(g_buffer.data, '\0', MAX_BUF_SIZE+1);
     g_buffer.filled = 0;
 
     if(!g_fd) {
@@ -54,7 +54,7 @@ int main(int argc, char *argv[])
         ret = select(fd_max, &fdset, NULL, NULL, NULL);
         if (ret > 0) {
             if (FD_ISSET(g_fd, &fdset) != 0) {
-                readAndProcess();
+                readAndProcess(ret);
             }
         }
     }
@@ -62,49 +62,56 @@ int main(int argc, char *argv[])
     return 0;
 }
 
-void readAndProcess()
+void readAndProcess(int size)
 {
     int i, j;
+    int left;
     int need;
     int numread;
     int last_filled;
     char *b;
     char tmp;
 
-    need = BUFFER_EMPTY_SIZE(g_buffer);
-    b = BUFFER_FREE_PTR(g_buffer);
+    left = size;
 
-    numread = read(g_fd, b, need);
+    while(left > 0) {
+        need = BUFFER_EMPTY_SIZE(g_buffer);
+        b = BUFFER_FREE_PTR(g_buffer);
 
-    if (numread == 0)
-        return;
-    else if (numread == need) {
-        printf("%s", g_buffer.data);
-        memset(g_buffer.data, 0, MAX_BUF_SIZE+1);
-        g_buffer.filled = 0;
-    }
-    else {
-        last_filled = g_buffer.filled;
-        g_buffer.filled += numread;
+        numread = read(g_fd, b, need);
 
-        for (i=last_filled; i<MAX_BUF_SIZE; ++i)
-            if (g_buffer.data[i] == '\n')
-                break;
-
-        if (i == MAX_BUF_SIZE)
-            return;
-        else {
-            tmp = g_buffer.data[i+1];
-            g_buffer.data[i+1] = '\0';
+        if (numread == 0) {
+            continue;
+        }
+        else if (numread == need) {
             printf("%s", g_buffer.data);
-            g_buffer.data[i+1] = tmp;
+            memset(g_buffer.data, 0, MAX_BUF_SIZE+1);
+            g_buffer.filled = 0;
+            left -= numread;
+        }
+        else {
+            last_filled = g_buffer.filled;
+            g_buffer.filled += numread;
+            left -= numread;
+
+            /* find the last possible '\n' */
+            for (i=g_buffer.filled; i>last_filled; --i)
+                if (g_buffer.data[i-1] == '\n')
+                    break;
             
-            g_buffer.filled = g_buffer.filled - i;
-            j = i;
-            for (i=0; i<g_buffer.filled; ++i) {
-                g_buffer.data[i] = g_buffer.data[j];
+            if (i > last_filled) {
+                tmp = g_buffer.data[i];
+                g_buffer.data[i] = '\0';
+                printf("%s", g_buffer.data);
+                g_buffer.data[i] = tmp;
+                
+                g_buffer.filled = g_buffer.filled - i;
+                j = i;
+                for (i=0; i<g_buffer.filled; ++i) {
+                    g_buffer.data[i] = g_buffer.data[j];
+                }
+                g_buffer.data[g_buffer.filled] = '\0';
             }
-            g_buffer.data[g_buffer.filled] = '\0';
         }
     }
 }
