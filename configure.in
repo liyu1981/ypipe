@@ -4,7 +4,7 @@
 AC_PREREQ([2.63])
 AC_INIT([ypipe], [1.0], [liyu1981@gmail.com])
 AC_CONFIG_SRCDIR([src/ypiped.c])
-#AC_CONFIG_HEADERS([config.h])
+AC_CONFIG_HEADERS([include/config.h])
 
 # Checks for programs.
 AC_PROG_CC

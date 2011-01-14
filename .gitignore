@@ -7,3 +7,4 @@
 /autom4te.cache/
 /Makefile
 /src/Makefile
+/include/config.h
