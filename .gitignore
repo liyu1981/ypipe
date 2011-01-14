@@ -3,6 +3,7 @@
 *.o
 *.log
 *.status
+/test/*
 /src/ypiped
 /autom4te.cache/
 /Makefile
