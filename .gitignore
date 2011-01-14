@@ -1,5 +1,9 @@
 *~
 *.out
 *.o
+*.log
+*.status
 /src/ypiped
 /autom4te.cache/
+/Makefile
+/src/Makefile

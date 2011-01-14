@@ -4,16 +4,18 @@
 AC_PREREQ([2.63])
 AC_INIT([ypipe], [1.0], [liyu1981@gmail.com])
 AC_CONFIG_SRCDIR([src/ypiped.c])
-AC_CONFIG_HEADERS([config.h])
+#AC_CONFIG_HEADERS([config.h])
 
 # Checks for programs.
 AC_PROG_CC
-AC_ARG_ENABLE([debug], [AS_HELP_STRING([--enable-debug], [compile with the debug infomation])]),
+AC_ARG_ENABLE([debug], [AS_HELP_STRING([--enable-debug], [compile with the debug infomation])],
                        [CFLAGS="-DDEBUG -g"],
                        [CFLAGS="-O2"])
-AC_SUBST(cfextra, $CFLAGS)
+AC_SUBST(cflags_extra, $CFLAGS)
 
-AC_PROG_INSTALL
+AC_SUBST(ldflags_extra, "")
+
+#AC_PROG_INSTALL
 
 AC_PROG_MAKE_SET
 
