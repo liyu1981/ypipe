@@ -16,11 +16,11 @@ export LDFLAGS=$(LDFLAGS_EXTRA)
 EXECS = ypiped
 
 all: Makefile
-	cd src; make
+	$(MAKE) -C src all
 
 install: all
 	install -d $(EXECDIR)
 	cd src; install -b $(EXECS) $(EXECDIR)
 
 clean:
-	cd src; make clean
+	$(MAKE) -C src clean
