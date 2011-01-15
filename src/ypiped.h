@@ -12,10 +12,10 @@ typedef struct {
 } buffer;
 
 typedef struct {
-    int    fifo_fd;
-    int    output_file_fd;
-    buffer buf;
-    int    terminate;
+    int     fifo_fd;
+    FILE   *output_file_fd;
+    buffer  buf;
+    int     terminate;
 } YpipeState;
 
 typedef struct {

@@ -27,6 +27,7 @@ void terminate();
 void readAndProcess();
 void outputBufferAll();
 void outputBufferUntilLineBreak();
+void printBuffer(const char *data);
 
 void signal_term(int signum);
 
@@ -46,7 +47,7 @@ void signal_term(int signum)
 
 void usage()
 {
-    printf("usage: ypipe <fifo> &\n");
+    printf("usage: -a -o <outputfile> ypipe <fifo> &\n");
 }
 
 void readConfig(int argc, char *argv[])
@@ -62,19 +63,19 @@ void readConfig(int argc, char *argv[])
      
     while ((c = getopt (argc, argv, "ao:")) != -1) {
         switch (c)
-            {
-            case 'a':
-                g_yp_config.append = 1;
-                break;
-            case 'o':
-                g_yp_config.output = 1;
-                strcpy(g_yp_config.output_file_path, optarg);
-                break;
-            case '?':
-            default:
-                usage();
-                exit(1);
-            }
+        {
+        case 'a':
+            g_yp_config.append = 1;
+            break;
+        case 'o':
+            g_yp_config.output = 1;
+            strcpy(g_yp_config.output_file_path, optarg);
+            break;
+        case '?':
+        default:
+            usage();
+        exit(1);
+        }
     }
      
     if (argc - optind < 1) {
@@ -176,7 +177,7 @@ void readAndProcess()
 
 void outputBufferAll()
 {
-    printf("%s", g_yp_state.buf.data);
+    printBuffer(g_yp_state.buf.data);
     memset(g_yp_state.buf.data, '\0', MAX_BUF_SIZE+1);
     g_yp_state.buf.filled = 0;
 }
@@ -195,7 +196,7 @@ void outputBufferUntilLineBreak(int last_filled)
     else {
         tmp = g_yp_state.buf.data[i];
         g_yp_state.buf.data[i] = '\0';
-        printf("%s", g_yp_state.buf.data);
+        printBuffer(g_yp_state.buf.data);
         g_yp_state.buf.data[i] = tmp;
         
         g_yp_state.buf.filled = g_yp_state.buf.filled - i;
@@ -204,5 +205,18 @@ void outputBufferUntilLineBreak(int last_filled)
             g_yp_state.buf.data[i] = g_yp_state.buf.data[j];
         }
         g_yp_state.buf.data[g_yp_state.buf.filled] = '\0';
+    }
+}
+
+void printBuffer(const char *data)
+{
+    /* first write to std* streams */
+    fprintf(stdout, "%s", data);
+    fflush(stdout);
+
+    /* then write to user specified streams */
+    if (g_yp_config.output) {
+        fprintf(g_yp_state.output_file_fd, "%s", data);
+        fflush(g_yp_state.output_file_fd);
     }
 }
