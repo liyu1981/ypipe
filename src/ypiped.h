@@ -18,11 +18,18 @@ typedef struct {
     int     terminate;
 } YpipeState;
 
+enum YpipeCmdType {
+    YP_OPEN = 0,
+    YP_KILL,
+    YP_CLEAR
+};
+
 typedef struct {
-    char fifo_path[PATH_MAX];
-    int  output;
-    char output_file_path[PATH_MAX];
-    int  append;
+    YpipeCmdType cmd;
+    pid_t        pid_to_kill;
+    char         fifo_path[PATH_MAX];
+    int          output;
+    char         output_file_path[PATH_MAX];
 } YpipeConfig;
 
 /* global variables */
