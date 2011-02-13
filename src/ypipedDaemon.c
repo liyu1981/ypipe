@@ -4,8 +4,11 @@
 #define BUFFER_FREE_PTR(bref) ((bref).data + (bref).filled)
 
 /* for daemon */
+void init();
+void signal_term(int signum);
+void signal_usr2(int signum);
 void reaper();
-void terminate();
+void terminate(int code);
 void readAndProcess();
 void outputBufferAll();
 void outputBufferUntilLineBreak();
@@ -13,8 +16,49 @@ void printBuffer(const char *data);
 
 void ypipeDaemon()
 {
+    init();
     reaper();
-    terminate();
+    terminate(0);
+}
+
+void init()
+{     
+    g_yp_state.terminate = 0;
+
+    memset(g_yp_state.buf.data, 0, MAX_BUF_SIZE+1);
+    g_yp_state.buf.filled = 0;
+
+    g_yp_state.fifo_fd = open(g_yp_config.fifo_path, O_RDONLY);
+    if (!g_yp_state.fifo_fd) {
+        printf("Open named pipe %s error!\n", g_yp_config.fifo_path);
+        terminate(1);
+    }
+
+    if (flock(g_yp_state.fifo_fd, LOCK_EX | LOCK_NB) != 0) {
+        printf("Lock named pipe %s error!\n", g_yp_config.fifo_path);
+        terminate(1);
+    }
+
+    if (!g_yp_config.output) {
+        g_yp_state.output_file_fd = 0;
+    }
+    else {
+        g_yp_state.output_file_fd = fopen(g_yp_config.output_file_path, "w+");
+        if (!g_yp_state.output_file_fd) {
+            printf("Open output file %s failed!\n", g_yp_config.output_file_path);
+            terminate(1);
+        }
+    }
+
+    if (signal(SIGTERM, signal_term) == SIG_ERR) {
+        printf("Error setting up catching signal SIGTERM.\n");
+        terminate(1);
+    }
+
+    if (signal(SIGUSR2, signal_usr2) == SIG_ERR) {
+        printf("Error setting up catching signal SIGUSR2.\n");
+        terminate(1);
+    }
 }
 
 void reaper()
@@ -44,11 +88,14 @@ void reaper()
     }
 }
 
-void terminate()
+void terminate(int code)
 {
     if(g_yp_state.buf.filled > 0) {
         outputBufferAll();
     }
+    flock(g_yp_state.fifo_fd, LOCK_UN | LOCK_NB);
+    remove(g_yp_config.fifo_path);
+    exit(code);
 }
 
 void readAndProcess()
@@ -115,7 +162,7 @@ void printBuffer(const char *data)
     fflush(stdout);
 
     /* then write to user specified streams */
-    if (g_yp_config.output) {
+    if (g_yp_config.output && g_yp_state.output_file_fd) {
         fprintf(g_yp_state.output_file_fd, "%s", data);
         fflush(g_yp_state.output_file_fd);
     }
@@ -133,7 +180,7 @@ void signal_usr2(int signum)
     g_yp_state.output_file_fd = fopen(g_yp_config.output_file_path, "w+");
     if (!g_yp_state.output_file_fd) {
         printf("Open output file %s failed!\n", g_yp_config.output_file_path);
-        exit(1);
+        terminate(1);
     }
     printf("ypipe on %s, output cleared!\n", g_yp_config.output_file_path);
 }

@@ -10,6 +10,7 @@
 #include <dirent.h>
 #include <limits.h>
 
+#include <sys/file.h>
 #include <sys/types.h>
 #include <sys/uio.h>
 #include <sys/stat.h>
@@ -51,6 +52,7 @@ extern YpipeConfig g_yp_config;
 
 extern const char *yp_dir;
 extern const char *yp_pid_file_format;
+extern const char *yp_fifo_file_format;
 
 void ypipeDaemon();
 

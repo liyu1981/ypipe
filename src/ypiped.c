@@ -5,6 +5,7 @@ YpipeConfig g_yp_config;
 
 const char *yp_dir = "~/.ypipe";
 const char *yp_pid_file_format = "~/.ypipe/%d.pid";
+const char *yp_fifo_file_format = "~/.ypipe/%d";
 
 /* function prototypes */
 /* for luncher */
@@ -13,10 +14,8 @@ void readConfig(int argc, char *argv[]);
 void ypipeCmdOpen();
 void ypipeCmdKill();
 void ypipeCmdClear();
-void init();
-void signal_term(int signum);
-void signal_usr2(int signum);
-int  writePid(pid_t pid);
+int  findSlot();
+void writePid(pid_t pid, int slot);
 
 /* implementations */
 int main(int argc, char *argv[])
@@ -41,15 +40,27 @@ int main(int argc, char *argv[])
 void ypipeCmdOpen()
 {
     pid_t  pid, sid;
-    FILE  *d;
+    DIR   *d;
+    int    slot;
     int    ret;
-
-    init();
 
     if (chdir("~/") < 0) {
         printf("Change to your home directory failed, oops.\n");
         exit(1);
     }
+
+    d = opendir(yp_dir);
+    if (d == NULL) {
+        ret = mkdir(yp_dir, S_IREAD | S_IWRITE);
+        if (ret != 0) {
+            printf("Create dir %s failed with code %d, oops.\n", yp_dir, ret);
+            exit(ret);
+        }
+    }
+    else
+        closedir(d);
+
+    slot = findSlot();
 
     if ((pid = fork()) != 0) {
         /* in child now */
@@ -70,22 +81,13 @@ void ypipeCmdOpen()
         /* close(STDOUT_FILENO); */
         close(STDERR_FILENO);
 
+        sprintf(g_yp_config.fifo_path, "~/.ypipe/%d", slot);
+
         /* now the real guts... */
         ypipeDaemon();
     }
     else {
-        d = opendir(yp_dir);
-        if (d == NULL) {
-            ret = mkdir(yp_dir, S_IREAD | S_IWRITE);
-            if (ret != 0) {
-                printf("Create dir %s failed with code %d, oops.\n", yp_dir, ret);
-                exit(ret);
-            }
-        }
-        else
-            closedir(d);
-
-        ret = writePid(pid);
+        writePid(pid, slot);
         printf("Ypipe started with id=%d.\n", ret);
     }
 }
@@ -101,60 +103,54 @@ void ypipeCmdClear()
     kill(g_yp_config.pid_to_kill, SIGUSR2);
 }
 
-int writePid(pid_t pid)
+int findSlot()
 {
     int   i;
     char  tmpath[PATH_MAX];
-    char  tmpstr[MAX_BUF_SIZE];
-    pid_t p;
-    FILE *f;
+    int   f;
 
     for (i=1; ; ++i) {
-        sprintf(tmpath, yp_pid_file_format, i);
+        sprintf(tmpath, yp_fifo_file_format, i);
 
-        f = fopen(tmpath, "r");
-        if (f == NULL)
-            continue;
+        f = open(tmpath, O_RDONLY);
 
-        if (fgets(tmpstr, MAX_BUF_SIZE, f) == NULL) {
-            /* empty pid file => no process associated => we can use it */
-            fclose(f);
-            break;
-        }
-        else {
-            if (sscanf(tmpstr, "%d", &p) <= 0) {
-                /* no valid pid => no process associated => we can use it */
-                fclose(f);
-                break;
+        if (f >= 0) {
+            if (flock(f, LOCK_EX | LOCK_NB) != 0) {
+                close(f);
+                continue;
             }
             else {
-                if (kill(p, SIGUSR1) < 0) {
-                    /* this process no longer exist, we can use it */
-                    fclose(f);
-                    break;
-                }
-                else {
-                    /* There is a process running, skip to next */
-                    fclose(f);
-                    continue;
-                }
+                /* we can get a lock on this fifo, so use it */
+                flock(f, LOCK_UN | LOCK_NB);
+                close(f);
+                break;
             }
+        }
+        else {
+            /* this slot does not exist */
+            break;
         }
     }
 
-    sprintf(tmpath, yp_pid_file_format, i);
+    return i;
+}
+
+void writePid(pid_t pid, int slot)
+{
+    char  tmpath[MAX_BUF_SIZE]; 
+    FILE *f;
+
+    sprintf(tmpath, yp_pid_file_format, slot);
     f = fopen(tmpath, "w+");
     fprintf(f, "%d\n", pid);
     fclose(f);
-
-    return i;
 }
 
 void usage()
 {
     printf("usage:\n");
-    printf("      ypiped -o <output_file> <fifo>\n");
-    printf("          open a ypipe based on <fifo>.\n");
+    printf("      ypiped -o <output_file>\n");
+    printf("          open a ypipe.\n");
     printf("      ypiped -k <id>\n");
     printf("          kill ypipe with <id>.\n");
     printf("      ypiped -c <id>\n");
@@ -197,41 +193,5 @@ void readConfig(int argc, char *argv[])
     }
 
     memset(g_yp_config.fifo_path, '\0', PATH_MAX);
-    strcpy(g_yp_config.fifo_path, argv[optind]);
+    /* strcpy(g_yp_config.fifo_path, argv[optind]); */
 }
-
-void init()
-{     
-    g_yp_state.terminate = 0;
-
-    g_yp_state.fifo_fd = open(g_yp_config.fifo_path, O_RDONLY);
-    if (!g_yp_state.fifo_fd) {
-        printf("Open named pipe %s error!\n", g_yp_config.fifo_path);
-        exit(1);
-    }
-
-    memset(g_yp_state.buf.data, 0, MAX_BUF_SIZE+1);
-    g_yp_state.buf.filled = 0;
-
-    if (!g_yp_config.output) {
-        g_yp_state.output_file_fd = 0;
-    }
-    else {
-        g_yp_state.output_file_fd = fopen(g_yp_config.output_file_path, "w+");
-        if (!g_yp_state.output_file_fd) {
-            printf("Open output file %s failed!\n", g_yp_config.output_file_path);
-            exit(1);
-        }
-    }
-
-    if (signal(SIGTERM, signal_term) == SIG_ERR) {
-        printf("Error setting up catching signal SIGTERM.\n");
-        exit(1);
-    }
-
-    if (signal(SIGUSR2, signal_usr2) == SIG_ERR) {
-        printf("Error setting up catching signal SIGUSR2.\n");
-        exit(1);
-    }
-}
-
