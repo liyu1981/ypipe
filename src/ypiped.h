@@ -25,7 +25,7 @@ enum YpipeCmdType {
 };
 
 typedef struct {
-    YpipeCmdType cmd;
+    enum YpipeCmdType cmd;
     pid_t        pid_to_kill;
     char         fifo_path[PATH_MAX];
     int          output;

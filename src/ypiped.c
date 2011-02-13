@@ -46,11 +46,6 @@ void signal_usr2(int signum);
 /* implementations */
 int main(int argc, char *argv[])
 {
-    pid_t  pid, sid;
-    FILE  *f;
-    DIR   *d;
-    int    ret;
-
     readConfig(argc, argv);
 
     switch(g_yp_config.cmd) {
@@ -70,6 +65,10 @@ int main(int argc, char *argv[])
 
 void ypipeCmdOpen()
 {
+    pid_t  pid, sid;
+    FILE  *d;
+    int    ret;
+
     init();
 
     if (chdir("~/") < 0) {
@@ -127,7 +126,7 @@ void ypipeCmdClear()
     kill(g_yp_config.pid_to_kill, SIGUSR2);
 }
 
-void writePid(pid_t pid)
+int writePid(pid_t pid)
 {
     int   i;
     char  tmpath[PATH_MAX];
