@@ -3,9 +3,13 @@
 YpipeState  g_yp_state;
 YpipeConfig g_yp_config;
 
-const char *yp_dir = "~/.ypipe";
-const char *yp_pid_file_format = "~/.ypipe/%d.pid";
-const char *yp_fifo_file_format = "~/.ypipe/%d";
+const char *g_homedir;
+
+const char *yp_dir = "%s/.ypipe";
+const char *yp_pid_file_format = "%s/.ypipe/%d.pid";
+const char *yp_fifo_file_format = "%s/.ypipe/%d";
+
+#define CurrentUserHome ((getpwuid(getuid()))->pw_dir)
 
 /* function prototypes */
 /* for luncher */
@@ -43,18 +47,22 @@ void ypipeCmdOpen()
     DIR   *d;
     int    slot;
     int    ret;
+    char   tmpath[MAX_BUF_SIZE];
 
-    if (chdir("~/") < 0) {
+    g_homedir = CurrentUserHome;
+
+    if ((ret = chdir(g_homedir)) < 0) {
         printf("Change to your home directory failed, oops.\n");
-        exit(1);
+        exit(errno);
     }
 
-    d = opendir(yp_dir);
+    sprintf(tmpath, yp_dir, g_homedir);
+    d = opendir(tmpath);
     if (d == NULL) {
-        ret = mkdir(yp_dir, S_IREAD | S_IWRITE);
+        ret = mkdir(tmpath, S_IRWXU);
         if (ret != 0) {
             printf("Create dir %s failed with code %d, oops.\n", yp_dir, ret);
-            exit(ret);
+            exit(errno);
         }
     }
     else
@@ -62,33 +70,33 @@ void ypipeCmdOpen()
 
     slot = findSlot();
 
-    if ((pid = fork()) != 0) {
+    if ((pid = fork()) == 0) {
         /* in child now */
-        if (pid < 0) {
-            printf("Fork ypipe daemon failed, oops.\n");
-            exit(1);
-        }
-
         umask(0);
 
         sid = setsid();
         if (sid < 0) {
             printf("Create a new SID for ypipe daemon failed, oops.\n");
-            exit(1);
+            exit(errno);
         }
 
         close(STDIN_FILENO);
         /* close(STDOUT_FILENO); */
         close(STDERR_FILENO);
 
-        sprintf(g_yp_config.fifo_path, "~/.ypipe/%d", slot);
+        sprintf(g_yp_config.fifo_path, "%s/.ypipe/%d", g_homedir, slot);
 
         /* now the real guts... */
         ypipeDaemon();
     }
     else {
+        if (pid < 0) {
+            printf("Fork ypipe daemon failed, oops.\n");
+            exit(errno);
+        }
+
         writePid(pid, slot);
-        printf("Ypipe started with id=%d.\n", ret);
+        printf("Ypipe started with id=%d.\n", slot);
     }
 }
 
@@ -105,12 +113,13 @@ void ypipeCmdClear()
 
 int findSlot()
 {
-    int   i;
-    char  tmpath[PATH_MAX];
-    int   f;
+    int    i;
+    char   tmpath[PATH_MAX];
+    int    f;
+    mode_t mask;
 
     for (i=1; ; ++i) {
-        sprintf(tmpath, yp_fifo_file_format, i);
+        sprintf(tmpath, yp_fifo_file_format, g_homedir, i);
 
         f = open(tmpath, O_RDONLY);
 
@@ -128,6 +137,12 @@ int findSlot()
         }
         else {
             /* this slot does not exist */
+            mask = umask(0);
+            if (mkfifo(tmpath, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH) < 0) {
+                printf("Create named pipe %s failed, oops.\n", tmpath);
+                exit(errno);
+            }
+            umask(mask);
             break;
         }
     }
@@ -140,7 +155,7 @@ void writePid(pid_t pid, int slot)
     char  tmpath[MAX_BUF_SIZE]; 
     FILE *f;
 
-    sprintf(tmpath, yp_pid_file_format, slot);
+    sprintf(tmpath, yp_pid_file_format, g_homedir, slot);
     f = fopen(tmpath, "w+");
     fprintf(f, "%d\n", pid);
     fclose(f);
@@ -183,15 +198,9 @@ void readConfig(int argc, char *argv[])
         case '?':
         default:
             usage();
-        exit(1);
+            exit(1);
         }
     }
      
-    if (argc - optind < 1) {
-        usage();
-        exit(1);
-    }
-
     memset(g_yp_config.fifo_path, '\0', PATH_MAX);
-    /* strcpy(g_yp_config.fifo_path, argv[optind]); */
 }

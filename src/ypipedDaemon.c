@@ -17,8 +17,9 @@ void printBuffer(const char *data);
 void ypipeDaemon()
 {
     init();
-    reaper();
-    terminate(0);
+    printf("inited.\n");
+    //reaper();
+    //terminate(0);
 }
 
 void init()
@@ -30,14 +31,16 @@ void init()
 
     g_yp_state.fifo_fd = open(g_yp_config.fifo_path, O_RDONLY);
     if (!g_yp_state.fifo_fd) {
-        printf("Open named pipe %s error!\n", g_yp_config.fifo_path);
-        terminate(1);
+        printf("Open named pipe %s error with code %d!\n", g_yp_config.fifo_path, errno);
+        exit(errno);
     }
+    printf("fifo opened.\n");
 
     if (flock(g_yp_state.fifo_fd, LOCK_EX | LOCK_NB) != 0) {
-        printf("Lock named pipe %s error!\n", g_yp_config.fifo_path);
-        terminate(1);
+        printf("Lock named pipe %s error with code %d!\n", g_yp_config.fifo_path, errno);
+        exit(errno);
     }
+    printf("fifo locked.\n");
 
     if (!g_yp_config.output) {
         g_yp_state.output_file_fd = 0;
@@ -46,18 +49,18 @@ void init()
         g_yp_state.output_file_fd = fopen(g_yp_config.output_file_path, "w+");
         if (!g_yp_state.output_file_fd) {
             printf("Open output file %s failed!\n", g_yp_config.output_file_path);
-            terminate(1);
+            exit(errno);
         }
     }
 
     if (signal(SIGTERM, signal_term) == SIG_ERR) {
         printf("Error setting up catching signal SIGTERM.\n");
-        terminate(1);
+        exit(errno);
     }
 
     if (signal(SIGUSR2, signal_usr2) == SIG_ERR) {
         printf("Error setting up catching signal SIGUSR2.\n");
-        terminate(1);
+        exit(errno);
     }
 }
 

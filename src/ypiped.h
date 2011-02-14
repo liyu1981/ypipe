@@ -9,6 +9,8 @@
 #include <signal.h>
 #include <dirent.h>
 #include <limits.h>
+#include <errno.h>
+#include <pwd.h>
 
 #include <sys/file.h>
 #include <sys/types.h>
