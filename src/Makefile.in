@@ -1,5 +1,5 @@
 
-SOURCES=ypiped.c ypipedDaemon.c
+SOURCES=ypiped.c
 OBJECTS=$(SOURCES:.c=.o)
 HFILES=$(SOURCES:.c=.h) ../include/config.h
 
