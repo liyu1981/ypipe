@@ -8,7 +8,7 @@ void init();
 void signal_term(int signum);
 void signal_usr2(int signum);
 void reaper();
-void terminate(int code);
+void terminate();
 void readAndProcess();
 void outputBufferAll();
 void outputBufferUntilLineBreak();
@@ -18,8 +18,8 @@ void ypipeDaemon()
 {
     init();
     printf("inited.\n");
-    //reaper();
-    //terminate(0);
+    reaper();
+    terminate();
 }
 
 void init()
@@ -34,14 +34,13 @@ void init()
         printf("Open named pipe %s error with code %d!\n", g_yp_config.fifo_path, errno);
         exit(errno);
     }
-    printf("fifo opened.\n");
+    printf("Fifo opened.\n");
 
-    if (flock(g_yp_state.fifo_fd, LOCK_EX | LOCK_NB) != 0) {
-        printf("Lock named pipe %s error with code %d!\n", g_yp_config.fifo_path, errno);
-        exit(errno);
-    }
-    printf("fifo locked.\n");
-
+    /* if (flock(g_yp_state.fifo_fd, LOCK_EX | LOCK_NB) != 0) { */
+    /*     printf("Lock named pipe %s error with code %d!\n", g_yp_config.fifo_path, errno); */
+    /*     exit(errno); */
+    /* } */
+ 
     if (!g_yp_config.output) {
         g_yp_state.output_file_fd = 0;
     }
@@ -73,32 +72,39 @@ void reaper()
 
     sigemptyset(&sigmask);
     sigaddset(&sigmask, SIGTERM);
+    sigaddset(&sigmask, SIGUSR2);
 
     for (;;) {
+        printf("reaper loop.\n");
         FD_ZERO(&fdset);
+        printf("reaper loop 1.\n");
         FD_SET(g_yp_state.fifo_fd, &fdset);
+        printf("reaper loop 1.\n");
         fd_max = g_yp_state.fifo_fd + 1;
 
         ret = pselect(fd_max, &fdset, NULL, NULL, NULL, &sigmask);
+        printf("reaper loop 2.\n");
+
         if (ret > 0) {
             if (FD_ISSET(g_yp_state.fifo_fd, &fdset) != 0) {
                 readAndProcess();
             }
         }
 
+        printf("reaper loop 3.\n");
+
         if (g_yp_state.terminate == 1)
             break;
     }
 }
 
-void terminate(int code)
+void terminate()
 {
     if(g_yp_state.buf.filled > 0) {
         outputBufferAll();
     }
-    flock(g_yp_state.fifo_fd, LOCK_UN | LOCK_NB);
-    remove(g_yp_config.fifo_path);
-    exit(code);
+    /* flock(g_yp_state.fifo_fd, LOCK_UN | LOCK_NB); */
+    printf("Ypipe on %s now terminated, bye!:)\n", g_yp_config.fifo_path);
 }
 
 void readAndProcess()
