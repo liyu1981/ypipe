@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <signal.h>
+#include <errno.h>
 
 #include <sys/types.h>
 #include <sys/uio.h>
@@ -30,6 +31,7 @@ void outputBufferUntilLineBreak();
 void printBuffer(const char *data);
 
 void signal_term(int signum);
+void signal_usr1(int signum);
 
 int main(int argc, char *argv[])
 {
@@ -45,9 +47,23 @@ void signal_term(int signum)
     g_yp_state.terminate = 1;
 }
 
+void signal_usr1(int signum)
+{
+    if (g_yp_state.output_file_fd) {
+        outputBufferAll();
+        fclose(g_yp_state.output_file_fd);
+        g_yp_state.output_file_fd = fopen(g_yp_config.output_file_path, "w+");
+        if (!g_yp_state.output_file_fd) {
+            printf("Open output file %s failed!\n", g_yp_config.output_file_path);
+            exit(errno);
+        }
+        printf("File %s is cleared.\n", g_yp_config.output_file_path);
+    }
+}
+
 void usage()
 {
-    printf("usage: -a -o <outputfile> ypipe <fifo> &\n");
+    printf("usage: -o <outputfile> ypipe <fifo> &\n");
 }
 
 void readConfig(int argc, char *argv[])
@@ -61,12 +77,9 @@ void readConfig(int argc, char *argv[])
 
     opterr = 0;
      
-    while ((c = getopt (argc, argv, "ao:")) != -1) {
+    while ((c = getopt (argc, argv, "o:")) != -1) {
         switch (c)
         {
-        case 'a':
-            g_yp_config.append = 1;
-            break;
         case 'o':
             g_yp_config.output = 1;
             strcpy(g_yp_config.output_file_path, optarg);
@@ -74,13 +87,13 @@ void readConfig(int argc, char *argv[])
         case '?':
         default:
             usage();
-        exit(1);
+            exit(1);
         }
     }
      
     if (argc - optind < 1) {
         usage();
-        exit(1);
+        exit(errno);
     }
 
     strcpy(g_yp_config.fifo_path, argv[optind]);
@@ -93,7 +106,7 @@ void init()
     g_yp_state.fifo_fd = open(g_yp_config.fifo_path, O_RDONLY);
     if (!g_yp_state.fifo_fd) {
         printf("Open named pipe %s error!\n", g_yp_config.fifo_path);
-        exit(1);
+        exit(errno);
     }
 
     memset(g_yp_state.buf.data, 0, MAX_BUF_SIZE+1);
@@ -103,17 +116,21 @@ void init()
         g_yp_state.output_file_fd = 0;
     }
     else {
-        g_yp_state.output_file_fd = fopen(g_yp_config.output_file_path,
-                                          g_yp_config.append==1 ? "a+" : "w+");
+        g_yp_state.output_file_fd = fopen(g_yp_config.output_file_path, "w+");
         if (!g_yp_state.output_file_fd) {
             printf("Open output file %s failed!\n", g_yp_config.output_file_path);
-            exit(1);
+            exit(errno);
         }
     }
 
     if (signal(SIGTERM, signal_term) == SIG_ERR) {
         printf("Error setting up catching signal SIGTERM.\n");
-        exit(1);
+        exit(errno);
+    }
+
+    if (signal(SIGUSR1, signal_usr1) == SIG_ERR) {
+        printf("Error setting up catching signal SIGUSR1.\n");
+        exit(errno);
     }
 }
 
@@ -126,6 +143,7 @@ void reaper()
 
     sigemptyset(&sigmask);
     sigaddset(&sigmask, SIGTERM);
+    sigaddset(&sigmask, SIGUSR1);
 
     for (;;) {
         FD_ZERO(&fdset);
@@ -149,6 +167,7 @@ void terminate()
     if(g_yp_state.buf.filled > 0) {
         outputBufferAll();
     }
+    printf("Ypipe on %s terminate now, bye:)\n", g_yp_config.fifo_path);
 }
 
 void readAndProcess()
