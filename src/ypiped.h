@@ -1,7 +1,23 @@
 #ifndef _YPIPED_H_
 #define _YPIPED_H_
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <signal.h>
+#include <dirent.h>
 #include <limits.h>
+#include <errno.h>
+#include <pwd.h>
+
+#include <sys/file.h>
+#include <sys/types.h>
+#include <sys/uio.h>
+#include <sys/stat.h>
+#include <sys/select.h>
+
 #include "../include/config.h"
 
 #define MAX_BUF_SIZE 1024
@@ -18,15 +34,24 @@ typedef struct {
     int     terminate;
 } YpipeState;
 
+enum YpipeCmdType {
+    YP_OPEN = 0,
+    YP_KILL,
+    YP_CLEAR
+};
+
 typedef struct {
-    char fifo_path[PATH_MAX];
-    int  output;
-    char output_file_path[PATH_MAX];
-    int  append;
+    enum YpipeCmdType cmd;
+    pid_t        pid_to_kill;
+    char         fifo_path[PATH_MAX];
+    int          output;
+    char         output_file_path[PATH_MAX];
 } YpipeConfig;
 
 /* global variables */
 extern YpipeState  g_yp_state;
-extern YpipeConfig g_yp_config; 
+extern YpipeConfig g_yp_config;
+
+void ypipeDaemon();
 
 #endif
