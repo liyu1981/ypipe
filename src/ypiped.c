@@ -103,7 +103,7 @@ void init()
 {     
     g_yp_state.terminate = 0;
 
-    g_yp_state.fifo_fd = open(g_yp_config.fifo_path, O_RDONLY);
+    g_yp_state.fifo_fd = open(g_yp_config.fifo_path, O_RDONLY | O_NONBLOCK);
     if (!g_yp_state.fifo_fd) {
         printf("Open named pipe %s error!\n", g_yp_config.fifo_path);
         exit(errno);
@@ -140,17 +140,21 @@ void reaper()
     int      fd_max;
     fd_set   fdset;
     sigset_t sigmask;
+    sigset_t sigmask2;
 
     sigemptyset(&sigmask);
     sigaddset(&sigmask, SIGTERM);
     sigaddset(&sigmask, SIGUSR1);
 
+    sigprocmask(SIG_BLOCK, &sigmask, &sigmask2);
+    
     for (;;) {
         FD_ZERO(&fdset);
         FD_SET(g_yp_state.fifo_fd, &fdset);
         fd_max = g_yp_state.fifo_fd + 1;
 
-        ret = pselect(fd_max, &fdset, NULL, NULL, NULL, &sigmask);
+
+        ret = pselect(fd_max, &fdset, NULL, NULL, NULL, &sigmask2);
         if (ret > 0) {
             if (FD_ISSET(g_yp_state.fifo_fd, &fdset) != 0) {
                 readAndProcess();
@@ -164,8 +168,10 @@ void reaper()
 
 void terminate()
 {
-    if(g_yp_state.buf.filled > 0) {
-        outputBufferAll();
+    if (g_yp_state.output_file_fd) {
+        if (g_yp_state.buf.filled > 0) {
+            outputBufferAll();
+        }
     }
     printf("Ypipe on %s terminate now, bye:)\n", g_yp_config.fifo_path);
 }
