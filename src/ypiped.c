@@ -41,9 +41,6 @@ void ypipeCmdOpen()
 
     if ((pid = fork()) == 0) {
         /* in child now */
-
-        chdir("/");
-
         umask(0);
 
         sid = setsid();
@@ -72,12 +69,17 @@ void ypipeCmdOpen()
 void ypipeCmdKill()
 {
     kill(g_yp_config.pid_to_kill, SIGTERM);
+#ifdef DEBUG
     printf("SIGTERM sent to process %d.\n", g_yp_config.pid_to_kill);
+#endif
 }
 
 void ypipeCmdClear()
 {
-    kill(g_yp_config.pid_to_kill, SIGUSR2);
+    kill(g_yp_config.pid_to_kill, SIGUSR1);
+#ifdef DEBUG
+    printf("SIGUSR1 sent to process %d.\n", g_yp_config.pid_to_kill);
+#endif
 }
 
 void usage()

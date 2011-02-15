@@ -6,7 +6,7 @@
 /* for daemon */
 void init();
 void signal_term(int signum);
-void signal_usr2(int signum);
+void signal_usr1(int signum);
 void reaper();
 void terminate();
 void readAndProcess();
@@ -17,7 +17,6 @@ void printBuffer(const char *data);
 void ypipeDaemon()
 {
     init();
-    printf("inited.\n");
     reaper();
     terminate();
 }
@@ -29,17 +28,11 @@ void init()
     memset(g_yp_state.buf.data, 0, MAX_BUF_SIZE+1);
     g_yp_state.buf.filled = 0;
 
-    g_yp_state.fifo_fd = open(g_yp_config.fifo_path, O_RDONLY);
-    if (!g_yp_state.fifo_fd) {
+    g_yp_state.fifo_fd = open(g_yp_config.fifo_path, O_RDONLY | O_NONBLOCK);
+    if (g_yp_state.fifo_fd <0) {
         printf("Open named pipe %s error with code %d!\n", g_yp_config.fifo_path, errno);
         exit(errno);
     }
-    printf("Fifo opened.\n");
-
-    /* if (flock(g_yp_state.fifo_fd, LOCK_EX | LOCK_NB) != 0) { */
-    /*     printf("Lock named pipe %s error with code %d!\n", g_yp_config.fifo_path, errno); */
-    /*     exit(errno); */
-    /* } */
  
     if (!g_yp_config.output) {
         g_yp_state.output_file_fd = 0;
@@ -57,8 +50,8 @@ void init()
         exit(errno);
     }
 
-    if (signal(SIGUSR2, signal_usr2) == SIG_ERR) {
-        printf("Error setting up catching signal SIGUSR2.\n");
+    if (signal(SIGUSR1, signal_usr1) == SIG_ERR) {
+        printf("Error setting up catching signal SIGUSR1.\n");
         exit(errno);
     }
 }
@@ -69,29 +62,26 @@ void reaper()
     int      fd_max;
     fd_set   fdset;
     sigset_t sigmask;
+    sigset_t sigmask2;
 
     sigemptyset(&sigmask);
     sigaddset(&sigmask, SIGTERM);
-    sigaddset(&sigmask, SIGUSR2);
+    sigaddset(&sigmask, SIGUSR1);
+
+    sigprocmask(SIG_BLOCK, &sigmask, &sigmask2);
 
     for (;;) {
-        printf("reaper loop.\n");
         FD_ZERO(&fdset);
-        printf("reaper loop 1.\n");
         FD_SET(g_yp_state.fifo_fd, &fdset);
-        printf("reaper loop 1.\n");
         fd_max = g_yp_state.fifo_fd + 1;
 
-        ret = pselect(fd_max, &fdset, NULL, NULL, NULL, &sigmask);
-        printf("reaper loop 2.\n");
+        ret = pselect(fd_max, &fdset, NULL, NULL, NULL, &sigmask2);
 
         if (ret > 0) {
             if (FD_ISSET(g_yp_state.fifo_fd, &fdset) != 0) {
                 readAndProcess();
             }
         }
-
-        printf("reaper loop 3.\n");
 
         if (g_yp_state.terminate == 1)
             break;
@@ -100,10 +90,12 @@ void reaper()
 
 void terminate()
 {
-    if(g_yp_state.buf.filled > 0) {
-        outputBufferAll();
+    if (g_yp_state.output_file_fd) {
+        if(g_yp_state.buf.filled > 0) {
+            outputBufferAll();
+        }
     }
-    /* flock(g_yp_state.fifo_fd, LOCK_UN | LOCK_NB); */
+
     printf("Ypipe on %s now terminated, bye!:)\n", g_yp_config.fifo_path);
 }
 
@@ -182,14 +174,19 @@ void signal_term(int signum)
     g_yp_state.terminate = 1;
 }
 
-void signal_usr2(int signum)
+void signal_usr1(int signum)
 {
-    outputBufferAll();
-    fclose(g_yp_state.output_file_fd);
-    g_yp_state.output_file_fd = fopen(g_yp_config.output_file_path, "w+");
-    if (!g_yp_state.output_file_fd) {
-        printf("Open output file %s failed!\n", g_yp_config.output_file_path);
-        terminate(1);
+    if (g_yp_state.output_file_fd) {
+        if(g_yp_state.buf.filled > 0) {
+            outputBufferAll();
+        }
+        fclose(g_yp_state.output_file_fd);
+        g_yp_state.output_file_fd = fopen(g_yp_config.output_file_path, "w+");
+        if (g_yp_state.output_file_fd < 0) {
+            printf("Open output file %s failed!\n", g_yp_config.output_file_path);
+            exit(errno);
+        }
+        printf("Ypipe on %s, output file %s cleared!\n",
+               g_yp_config.fifo_path, g_yp_config.output_file_path);
     }
-    printf("ypipe on %s, output cleared!\n", g_yp_config.output_file_path);
 }
