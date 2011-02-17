@@ -71,7 +71,9 @@ void ypipeCmdOpen()
 
         close(STDIN_FILENO);
         /* close(STDOUT_FILENO); */
+#ifndef DEBUG
         close(STDERR_FILENO);
+#endif
 
         /* now the real guts... */
         ypipeDaemon();
